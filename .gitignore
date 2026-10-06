@@ -7,3 +7,4 @@ datos/
 # Herramientas y referencias de diseño (no son parte de la app)
 .claude/skills/
 refs/
+.vercel/
