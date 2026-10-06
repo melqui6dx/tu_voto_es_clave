@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.env
+datos/
+
+# Herramientas y referencias de diseño (no son parte de la app)
+.claude/skills/
+refs/

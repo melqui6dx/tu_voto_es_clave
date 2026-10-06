@@ -1,0 +1,99 @@
+---
+// Slogan + QR al canal de propuestas. El QR se genera en build como SVG (0 JS, funciona offline).
+// En móvil nadie puede escanear su propia pantalla: el QR también es un enlace y hay un botón visible.
+import QRCode from 'qrcode';
+import ClaveLogo from './ClaveLogo.astro';
+import { slogan, canal } from '../data/clave';
+
+// "Texto [resaltado] texto" → partes con bandera de resaltado.
+const partes = slogan.split(/(\[[^\]]+\])/).filter(Boolean).map((p) => ({
+  texto: p.replace(/^\[|\]$/g, ''),
+  resaltado: p.startsWith('['),
+}));
+
+// Corrección H (30%): permite tapar el centro con el logo.
+const qr = QRCode.create(canal.url, { errorCorrectionLevel: 'H' });
+const n = qr.modules.size;
+const oscuro = (x: number, y: number) => qr.modules.get(y, x) === 1;
+const margen = 2;
+const lado = n + margen * 2;
+
+// Zonas que se dibujan aparte: los 3 ojos de esquina y el hueco central para el logo.
+const esFinder = (x: number, y: number) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
+const hueco = Math.ceil(n * 0.24) | 1; // impar para centrar
+const h0 = (n - hueco) / 2;
+const enHueco = (x: number, y: number) => x >= h0 - 0.5 && x < h0 + hueco - 0.5 && y >= h0 - 0.5 && y < h0 + hueco - 0.5;
+
+let puntos = '';
+for (let y = 0; y < n; y++) {
+  for (let x = 0; x < n; x++) {
+    if (oscuro(x, y) && !esFinder(x, y) && !enHueco(x, y)) {
+      puntos += `M${x + margen + 0.12} ${y + margen + 0.12}h0.76v0.76h-0.76z`;
+    }
+  }
+}
+const finders = [
+  [0, 0],
+  [n - 7, 0],
+  [0, n - 7],
+].map(([x, y]) => ({ x: x + margen, y: y + margen }));
+const huecoPct = (hueco / lado) * 100;
+---
+
+<section aria-labelledby="t-slogan" class="revelar flex flex-col gap-6">
+  <div class="grid grid-cols-[1fr_auto] items-center gap-5 sm:gap-8">
+    <div class="flex flex-col gap-3">
+      <p class="font-display text-sm font-bold uppercase tracking-[0.2em] text-lila-claro">ICU-CENTROS INTERNOS</p>
+      <h2 id="t-slogan" class="font-display text-[clamp(2rem,9vw,3.75rem)] font-extrabold uppercase leading-[0.9]">
+        {partes.map((p) => (p.resaltado ? <span class="text-lila">{p.texto}</span> : p.texto))}
+      </h2>
+    </div>
+
+    <a
+      href={canal.url}
+      target="_blank"
+      rel="noopener"
+      class="qr-tarjeta pulsable block w-36 sm:w-44 lg:w-52"
+      aria-label={`Abrir ${canal.nombre} con las propuestas de CLAVE`}
+    >
+      <span class="borde-vivo block rounded-3xl p-[2px]">
+        <span class="flex flex-col items-center gap-2 rounded-[22px] bg-panel p-3">
+          <span class="relative block w-full rounded-2xl bg-tinta p-1.5">
+            <svg viewBox={`0 0 ${lado} ${lado}`} class="block w-full" shape-rendering="geometricPrecision" aria-hidden="true">
+              <path d={puntos} fill="var(--color-noche)" />
+              {
+                finders.map(({ x, y }) => (
+                  <>
+                    <rect x={x + 0.5} y={y + 0.5} width="6" height="6" rx="1.6" fill="none" stroke="var(--color-clave)" stroke-width="1" />
+                    <rect x={x + 2} y={y + 2} width="3" height="3" rx="0.8" fill="var(--color-coral)" />
+                  </>
+                ))
+              }
+            </svg>
+            <span
+              class="absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-lg bg-clave"
+              style={`width:${huecoPct}%;height:${huecoPct}%`}
+            >
+              <ClaveLogo variante="ojos" class="w-4/5" />
+            </span>
+          </span>
+          <span class="whitespace-nowrap font-display text-[11px] font-bold uppercase tracking-widest text-lila-claro sm:text-xs">
+            <span class="sm:hidden"> Propuestas CLAVE</span><span class="hidden sm:inline">Escanea · Propuestas</span>
+          </span>
+        </span>
+      </span>
+    </a>
+  </div>
+
+  <a
+    href={canal.url}
+    target="_blank"
+    rel="noopener"
+    class="pulsable group flex h-14 items-center justify-between gap-3 rounded-2xl border border-lila/50 bg-lila/10 px-5 font-semibold text-tinta hover:bg-lila/20"
+  >
+    <span>Ver propuestas en {canal.nombre}</span>
+    <svg viewBox="0 0 24 24" class="size-5 text-lila transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  </a>
+</section>

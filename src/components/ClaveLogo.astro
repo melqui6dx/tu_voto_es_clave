@@ -1,0 +1,43 @@
+---
+// Logo oficial de CLAVE (src/assets/clave-logo.svg), inline para poder animar ojos y pupilas.
+// variante "ojos": solo los ojos (header, estados de carga). "completo": ojos + "CLAVE".
+import raw from '../assets/clave-logo.svg?raw';
+
+interface Props {
+  variante?: 'ojos' | 'completo';
+  class?: string;
+  id?: string;
+}
+
+const { variante = 'completo', class: clase = '', id } = Astro.props;
+
+// Trazos en el orden del archivo: 5 letras, ojo izq., ojo der., pupila izq., pupila der.
+// Se redondean las coordenadas (lienzo de 4694px: un decimal no se nota y ahorra ~40% de peso).
+const trazos = [...raw.matchAll(/<path d="([^"]+)"/g)].map((m) =>
+  m[1].replace(/\d+\.\d+/g, (n) => String(Math.round(Number(n)))),
+);
+if (trazos.length !== 9) throw new Error(`clave-logo.svg: se esperaban 9 trazos, hay ${trazos.length}`);
+const letras = trazos.slice(0, 5);
+const [ojoIzq, ojoDer, pupilaIzq, pupilaDer] = trazos.slice(5);
+
+const viewBox = variante === 'ojos' ? '340 -40 4020 1880' : '-40 -40 4774 3796';
+---
+
+<svg
+  id={id}
+  class:list={['logo-clave', clase]}
+  viewBox={viewBox}
+  role="img"
+  aria-label="CLAVE"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <g class="ojo">
+    <path d={ojoIzq} fill="var(--color-coral)" />
+    <path class="pupila" d={pupilaIzq} fill="#191a17" />
+  </g>
+  <g class="ojo">
+    <path d={ojoDer} fill="var(--color-coral)" />
+    <path class="pupila" d={pupilaDer} fill="#191a17" />
+  </g>
+  {variante === 'completo' && <g fill="var(--color-tinta)">{letras.map((d) => <path d={d} />)}</g>}
+</svg>

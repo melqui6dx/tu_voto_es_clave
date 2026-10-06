@@ -1,0 +1,72 @@
+---
+// Fuentes self-hosted (solo latin y pesos usados): funcionan offline y no dependen de un CDN.
+import '@fontsource/barlow-condensed/latin-700.css';
+import '@fontsource/barlow-condensed/latin-800.css';
+import '@fontsource/barlow/latin-400.css';
+import '@fontsource/barlow/latin-600.css';
+import '@fontsource/jetbrains-mono/latin-500.css';
+import displayFont from '@fontsource/barlow-condensed/files/barlow-condensed-latin-800-normal.woff2?url';
+import '../styles/global.css';
+import ClaveLogo from '../components/ClaveLogo.astro';
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#140b24" />
+    <meta name="description" content="Elecciones estudiantiles FICCT 2026–2028: consulta tu recinto, aula y mesa. Una iniciativa de CLAVE." />
+    <link rel="preload" href={displayFont} as="font" type="font/woff2" crossorigin />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <title>{title}</title>
+  </head>
+  <body class="min-h-dvh antialiased">
+    <header class="mx-auto flex max-w-6xl items-center justify-between px-4 pt-4">
+      <a href="/" class="flex items-center gap-2" aria-label="CLAVE · FICCT, inicio">
+        <ClaveLogo variante="ojos" id="logo-header" class="h-7 w-auto" />
+        <span class="font-display text-lg font-extrabold tracking-wide">CLAVE <span class="text-bruma">· FICCT</span></span>
+      </a>
+    </header>
+
+    <slot />
+
+    <footer class="mx-auto max-w-6xl px-4 pb-10 pt-6 text-center text-xs text-bruma">
+      La CLAVE del cambio, <span class="font-semibold text-lila-claro">ERES TÚ</span>
+    </footer>
+
+    <script>
+      // Service Worker: tras registrarlo, le pasamos los assets ya cargados (CSS, JS, fuentes con hash)
+      // para que la interfaz completa quede disponible offline desde la primera visita.
+      // En desarrollo no se usa SW (evita servir código viejo); se elimina si quedó registrado.
+      if (import.meta.env.DEV && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+        caches?.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+      }
+
+      if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+        addEventListener('load', async () => {
+          try {
+            await navigator.serviceWorker.register('/sw.js');
+            const reg = await navigator.serviceWorker.ready;
+            const urls = performance
+              .getEntriesByType('resource')
+              .map((e) => e.name)
+              .filter((u) => u.startsWith(location.origin + '/_astro/'));
+            reg.active?.postMessage({ tipo: 'precache', urls });
+          } catch {
+            /* sin SW la app sigue funcionando online */
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

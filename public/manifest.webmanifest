@@ -1,0 +1,16 @@
+{
+  "name": "¿Dónde votas? · CLAVE FICCT",
+  "short_name": "Dónde voto",
+  "description": "Consulta tu recinto, aula y mesa en las elecciones estudiantiles FICCT 2026–2028.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#140b24",
+  "theme_color": "#140b24",
+  "lang": "es",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

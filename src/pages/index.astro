@@ -1,0 +1,356 @@
+---
+import Layout from '../layouts/Layout.astro';
+import ClaveLogo from '../components/ClaveLogo.astro';
+import SloganQr from '../components/SloganQr.astro';
+
+// Página estática: se genera en build, los datos llegan por fetch a la API.
+export const prerender = true;
+---
+
+<Layout title="¿Dónde votas? · CLAVE FICCT">
+  <main class="mx-auto flex max-w-6xl flex-col gap-10 px-4 py-6 lg:grid lg:grid-cols-[1.15fr_1fr] lg:items-start lg:gap-x-12">
+    <!-- Intro (póster) -->
+    <section class="flex flex-col gap-3 lg:col-start-1 lg:row-start-1 lg:pt-10">
+      <p class="font-display text-sm font-bold uppercase tracking-[0.2em] text-lila-claro">
+        Elecciones estudiantiles FICCT 2026–2028
+      </p>
+      <div class="flex items-center justify-between gap-3">
+        <h1 class="min-w-0 font-display text-[clamp(2.75rem,13vw,6.5rem)] font-extrabold uppercase leading-[0.85]">
+          ¿Sabes<br /><span class="text-lila">dónde</span><br />votas?
+        </h1>
+        <ClaveLogo class="w-[26vw] max-w-48 shrink-0" />
+      </div>
+      <p class="max-w-sm text-bruma">
+        Escribe tu registro y encuentra tu <span class="text-lila-claro">aula</span> y tu{' '}
+        <span class="text-lila-claro">mesa</span>. 
+      </p>
+    </section>
+
+    <!-- Consulta: en escritorio queda fija a la derecha, como el panel de ref1 -->
+    <section
+      aria-label="Consulta tu mesa"
+      class="panel flex flex-col gap-5 rounded-3xl p-5 sm:p-7 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1"
+    >
+      <form id="form-consulta" class="flex flex-col gap-3" novalidate>
+        <div id="campo" class="relative">
+          <input
+            id="registro"
+            name="registro"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            maxlength="100"
+            placeholder=" "
+            class="peer h-16 w-full rounded-2xl border border-borde bg-panel-2 px-4 pt-5 font-mono text-xl tracking-wider text-tinta outline-none transition-colors focus:border-lila"
+          />
+          <label
+            for="registro"
+            class="pointer-events-none absolute left-4 top-2.5 text-xs font-semibold uppercase tracking-wider text-lila-claro transition-all peer-placeholder-shown:top-5 peer-placeholder-shown:text-base peer-placeholder-shown:normal-case peer-placeholder-shown:tracking-normal peer-placeholder-shown:text-bruma peer-focus:top-2.5 peer-focus:text-xs peer-focus:uppercase peer-focus:tracking-wider peer-focus:text-lila-claro"
+          >
+            Tu número de registro
+          </label>
+        </div>
+        <button
+          id="btn-consultar"
+          type="submit"
+          class="pulsable h-14 rounded-2xl bg-lila font-display text-xl font-extrabold uppercase tracking-wide text-noche hover:bg-lila-claro disabled:opacity-60"
+        >
+          Consultar mesa
+        </button>
+      </form>
+
+      <div id="resultados" class="flex flex-col gap-4 empty:hidden" aria-live="polite"></div>
+    </section>
+
+    <!-- Slogan + QR al canal de propuestas -->
+    <div class="lg:col-start-1">
+      <SloganQr />
+    </div>
+  </main>
+
+  <!-- Ojos del logo para clonar en los estados de carga/error -->
+  <template id="tpl-ojos"><ClaveLogo variante="ojos" class="mx-auto w-28" /></template>
+</Layout>
+
+<script>
+  // Base de la API; vacío = mismo origen.
+  const API_BASE: string = import.meta.env.PUBLIC_API_BASE ?? '';
+  const TIMEOUT_MS = 8000;
+  const CACHE_PREFIX = 'consulta:';
+  const ULTIMO_KEY = 'ultimo-registro';
+
+  const ESTAMENTOS = [
+    { key: 'centro_interno', label: 'Centro Interno' },
+    { key: 'icu_facultativo', label: 'ICU' },
+    { key: 'ful', label: 'FUL' },
+  ] as const;
+
+  const ICONO_SI = 'M5 12.5l4.5 4.5L19 7.5';
+  const ICONO_NO = 'M7 7l10 10M17 7L7 17';
+
+  const form = document.getElementById('form-consulta') as HTMLFormElement;
+  const input = document.getElementById('registro') as HTMLInputElement;
+  const campo = document.getElementById('campo') as HTMLDivElement;
+  const btn = document.getElementById('btn-consultar') as HTMLButtonElement;
+  const resultados = document.getElementById('resultados') as HTMLDivElement;
+  const logoHeader = document.getElementById('logo-header') as unknown as SVGElement;
+  const tplOjos = document.getElementById('tpl-ojos') as HTMLTemplateElement;
+  const sinMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let enCurso = false;
+
+  // Helper para crear nodos sin innerHTML (evita inyección si la API devuelve HTML).
+  function el(tag: string, className = '', text = ''): HTMLElement {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  }
+
+  function ojos(estado: 'buscando' | 'enojado'): Element {
+    const svg = (tplOjos.content.firstElementChild as Element).cloneNode(true) as SVGElement;
+    svg.dataset.estado = estado;
+    return svg;
+  }
+
+  // El fantasma del header mira hacia el campo mientras escribes.
+  input.addEventListener('focus', () => (logoHeader.dataset.estado = 'mirando'));
+  input.addEventListener('blur', () => delete logoHeader.dataset.estado);
+
+  function mostrarCargando() {
+    btn.disabled = true;
+    btn.textContent = 'Buscando…';
+    const barra = el('div', 'mx-auto flex w-40 gap-1.5');
+    for (let i = 0; i < 5; i++) {
+      const seg = el('span', 'segmento h-1.5 flex-1 rounded-full bg-borde');
+      seg.style.setProperty('--i', String(i));
+      barra.append(seg);
+    }
+    const caja = el('div', 'flex flex-col items-center gap-3 py-4 text-center');
+    caja.append(ojos('buscando'), el('p', 'font-semibold', 'Buscando tu mesa…'), barra);
+    resultados.replaceChildren(caja);
+  }
+
+  function mostrarMensaje(texto: string, tono: 'error' | 'info' = 'info') {
+    const caja = el('div', 'entrar flex flex-col items-center gap-3 rounded-2xl bg-panel-2 p-5 text-center');
+    if (tono === 'error') {
+      caja.append(ojos('enojado'));
+      campo.classList.remove('sacudir');
+      void campo.offsetWidth; // reinicia la animación
+      campo.classList.add('sacudir');
+    }
+    caja.append(el('p', tono === 'error' ? 'font-semibold text-coral' : 'text-tinta', texto));
+    resultados.replaceChildren(caja);
+  }
+
+  function fin() {
+    enCurso = false;
+    btn.disabled = false;
+    btn.textContent = 'Consultar mesa';
+  }
+
+  // Un estamento "vota aquí" si el campo tiene un valor que no sea negativo.
+  function votaEn(valor: unknown): boolean {
+    if (valor === null || valor === undefined) return false;
+    const v = String(valor).trim().toLowerCase();
+    return v !== '' && !['no', '0', 'false', '-'].includes(v);
+  }
+
+  const texto = (v: unknown) => String(v ?? '').trim();
+
+  // Cuenta rápida 0→n para el número de mesa.
+  function contar(nodo: HTMLElement, final: string) {
+    const n = Number(final);
+    if (sinMovimiento || !/^\d+$/.test(final) || n > 999) return;
+    const inicio = performance.now();
+    const paso = (t: number) => {
+      const p = Math.min((t - inicio) / 500, 1);
+      nodo.textContent = String(Math.round(n * (1 - (1 - p) ** 3)));
+      if (p < 1) requestAnimationFrame(paso);
+    };
+    requestAnimationFrame(paso);
+  }
+
+  function tarjetaMesa(r: Record<string, unknown>, i: number): HTMLElement {
+    const mesa = texto(r.mesa) || '—';
+    const recinto = texto(r.recinto) || '—';
+    const aula = [texto(r.lugar_2), texto(r.aula)].filter(Boolean).join(' ') || '—';
+    const votos = ESTAMENTOS.filter((e) => votaEn(r[e.key])).map((e) => e.label);
+
+    const card = el('article', 'entrar panel overflow-hidden rounded-[20px]');
+    card.style.setProperty('--i', String(i + 1));
+
+    const arriba = el('div', 'flex items-stretch gap-4 p-4');
+    const bloqueMesa = el('div', 'flex min-w-20 flex-col items-center justify-center rounded-2xl bg-clave px-3 py-2');
+    const numero = el('span', 'font-display text-5xl font-extrabold leading-none text-coral', mesa);
+    bloqueMesa.append(el('span', 'text-[10px] font-semibold uppercase tracking-widest text-lila-claro', 'Mesa'), numero);
+    contar(numero, mesa);
+
+    const datos = el('dl', 'flex flex-1 flex-col justify-center gap-2');
+    for (const [etiqueta, valor] of [['Recinto', recinto], ['Aula', aula]]) {
+      const fila = el('div');
+      fila.append(
+        el('dt', 'text-[10px] font-semibold uppercase tracking-widest text-bruma', etiqueta),
+        el('dd', 'font-mono text-lg font-medium leading-tight', valor),
+      );
+      datos.append(fila);
+    }
+    arriba.append(bloqueMesa, datos);
+
+    // "Votas para": cada estamento con un SÍ / NO explícito.
+    const abajo = el('div', 'perforado flex flex-col gap-2 px-4 pb-4 pt-3');
+    const cabecera = el('div', 'flex items-center justify-between gap-3');
+    cabecera.append(el('p', 'text-[10px] font-semibold uppercase tracking-widest text-bruma', 'Votas para'));
+
+    const lista = el('dl', 'flex flex-col gap-1.5');
+    for (const e of ESTAMENTOS) {
+      const si = votaEn(r[e.key]);
+      const fila = el('div', `flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${si ? 'bg-lila/10' : 'bg-panel-2/60'}`);
+      const estado = el(
+        'dd',
+        `flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${si ? 'bg-lila text-noche' : 'text-bruma ring-1 ring-borde'}`,
+      );
+      estado.innerHTML = `<svg viewBox="0 0 24 24" class="size-3.5" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${si ? ICONO_SI : ICONO_NO}"/></svg>`;
+      estado.append(si ? 'SÍ' : 'NO');
+      fila.append(el('dt', `text-sm font-semibold ${si ? 'text-tinta' : 'text-bruma'}`, e.label), estado);
+      lista.append(fila);
+    }
+
+    const copiar = el('button', 'pulsable shrink-0 rounded-full border border-borde px-3 py-2 text-xs font-semibold text-tinta hover:border-lila', 'Copiar') as HTMLButtonElement;
+    copiar.type = 'button';
+    copiar.addEventListener('click', async () => {
+      const resumen = `Voto en ${recinto}, ${aula}, mesa ${mesa}. Voto para: ${votos.length ? votos.join(', ') : 'ninguno'}.`;
+      try {
+        await navigator.clipboard.writeText(resumen);
+        copiar.textContent = '¡Copiado!';
+      } catch {
+        copiar.textContent = 'No se pudo copiar';
+      }
+      setTimeout(() => (copiar.textContent = 'Copiar'), 1800);
+    });
+
+    cabecera.append(copiar);
+    abajo.append(cabecera, lista);
+    card.append(arriba, abajo);
+    return card;
+  }
+
+  function renderResultados(registros: Record<string, unknown>[], aviso?: string) {
+    const nodos: HTMLElement[] = [];
+
+    if (aviso) {
+      nodos.push(el('div', 'entrar rounded-2xl border border-aviso/40 bg-aviso/10 p-3 text-sm text-aviso', aviso));
+    }
+
+    const primero = registros[0] ?? {};
+    const identidad = el('div', 'entrar flex flex-col gap-1');
+    identidad.append(
+      el('p', 'font-display text-sm font-bold uppercase tracking-[0.2em] text-lila-claro', '¡Te encontramos!'),
+      el('h2', 'font-display text-3xl font-extrabold uppercase leading-none', texto(primero.nombre)),
+      el('p', 'text-sm text-bruma', [texto(primero.carrera), texto(primero.facultad)].filter(Boolean).join(' · ')),
+    );
+    nodos.push(identidad);
+
+    nodos.push(
+      el('p', 'entrar text-sm text-bruma', registros.length === 1 ? 'Tienes 1 mesa:' : `Tienes ${registros.length} mesas:`),
+    );
+    registros.forEach((r, i) => nodos.push(tarjetaMesa(r, i)));
+
+    const otro = el('button', 'pulsable rounded-2xl border border-borde py-3 text-sm font-semibold text-bruma hover:text-tinta', 'Consultar otro registro') as HTMLButtonElement;
+    otro.type = 'button';
+    otro.addEventListener('click', () => {
+      input.value = '';
+      resultados.replaceChildren();
+      input.focus();
+    });
+    nodos.push(otro);
+
+    resultados.replaceChildren(...nodos);
+    navigator.vibrate?.(12);
+    if (innerWidth < 1024) resultados.scrollIntoView({ behavior: sinMovimiento ? 'auto' : 'smooth', block: 'start' });
+  }
+
+  function guardarLocal(registro: string, data: unknown[]) {
+    try {
+      localStorage.setItem(CACHE_PREFIX + registro, JSON.stringify({ fecha: Date.now(), data }));
+      localStorage.setItem(ULTIMO_KEY, registro);
+    } catch {
+      /* almacenamiento lleno o bloqueado: no es crítico */
+    }
+  }
+
+  function leerLocal(registro: string): { fecha: number; data: Record<string, unknown>[] } | null {
+    try {
+      const raw = localStorage.getItem(CACHE_PREFIX + registro);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // Pre-rellenar con el último registro consultado: el día de la elección es reconsultar de un toque.
+  try {
+    input.value = localStorage.getItem(ULTIMO_KEY) ?? '';
+  } catch {
+    /* sin almacenamiento */
+  }
+
+  async function consultarApi(registro: string): Promise<Record<string, unknown>[] | 'no-encontrado'> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${API_BASE}/api/consulta/${encodeURIComponent(registro)}`, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+        cache: 'no-store',
+      });
+      if (res.status === 404) return 'no-encontrado';
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const lista = Array.isArray(json) ? json : [json];
+      return lista as Record<string, unknown>[];
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (enCurso) return;
+
+    const registro = input.value.trim();
+    if (!registro) {
+      mostrarMensaje('Ingresa tu número de registro.', 'error');
+      input.focus();
+      return;
+    }
+
+    input.blur(); // cierra el teclado en móvil para ver el resultado
+    enCurso = true;
+    mostrarCargando();
+
+    try {
+      const data = await consultarApi(registro);
+
+      if (data === 'no-encontrado' || data.length === 0) {
+        mostrarMensaje('No encontramos ese registro. Revisa los números e intenta de nuevo.', 'error');
+      } else {
+        guardarLocal(registro, data);
+        renderResultados(data);
+      }
+    } catch {
+      // Red lenta, caída o timeout: usar la última consulta guardada si existe.
+      const previa = leerLocal(registro);
+      if (previa && previa.data.length > 0) {
+        const hora = new Date(previa.fecha).toLocaleString('es');
+        renderResultados(previa.data, `Tu conexión es lenta. Mostramos tu última consulta guardada (${hora}).`);
+      } else {
+        mostrarMensaje('Tu conexión es lenta. Intenta de nuevo.', 'error');
+      }
+    } finally {
+      fin();
+    }
+  });
+</script>
